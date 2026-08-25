@@ -1,4 +1,5 @@
-const API_BASE_URL = '/api';
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const API_PREFIX = `${API_BASE_URL}/api`;
 
 /**
  * Common fetch helper with JSON parsing and credentials support for OAuth sessions
@@ -18,7 +19,7 @@ async function fetchApi(endpoint, options = {}) {
     credentials: 'include',
   };
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+  const response = await fetch(`${API_PREFIX}${endpoint}`, config);
 
   if (response.status === 204) {
     return null;
@@ -40,7 +41,7 @@ export const api = {
   // Auth API
   getAuthMe: () => fetchApi('/auth/me'),
   loginWithGoogle: () => {
-    window.location.href = '/oauth2/authorization/google';
+    window.location.href = `${API_BASE_URL}/oauth2/authorization/google`;
   },
   logout: () => fetchApi('/auth/logout', { method: 'POST' }),
 

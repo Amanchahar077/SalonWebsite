@@ -15,13 +15,16 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Value;
 
 @Service
 public class AvailabilityService {
@@ -32,6 +35,10 @@ public class AvailabilityService {
     private final ProviderRepository providerRepository;
     private final AppointmentRepository appointmentRepository;
     private final ProviderService providerService;
+    private final Clock clock;
+
+    @Value("${app.appointment.minimum-booking-lead-minutes:60}")
+    private int minimumBookingLeadMinutes;
 
     private static final List<AppointmentStatus> ACTIVE_STATUSES = Arrays.asList(
             AppointmentStatus.PENDING_PAYMENT,
@@ -42,11 +49,13 @@ public class AvailabilityService {
     public AvailabilityService(SalonConfigurationService configurationService,
                                ProviderRepository providerRepository,
                                AppointmentRepository appointmentRepository,
-                               ProviderService providerService) {
+                               ProviderService providerService,
+                               Clock clock) {
         this.configurationService = configurationService;
         this.providerRepository = providerRepository;
         this.appointmentRepository = appointmentRepository;
         this.providerService = providerService;
+        this.clock = clock;
     }
 
     @Transactional(readOnly = true)
@@ -65,6 +74,8 @@ public class AvailabilityService {
                currentStart.plusMinutes(durationMinutes).equals(closing)) {
             
             LocalTime currentEnd = currentStart.plusMinutes(durationMinutes);
+            LocalDateTime slotStartDateTime = LocalDateTime.of(date, currentStart);
+            boolean meetsLeadTime = !slotStartDateTime.isBefore(LocalDateTime.now(clock).plusMinutes(minimumBookingLeadMinutes));
 
             List<Appointment> overlappingAppointments = appointmentRepository.findOverlappingActiveAppointments(
                     date, currentStart, currentEnd, ACTIVE_STATUSES
@@ -80,14 +91,14 @@ public class AvailabilityService {
                     .collect(Collectors.toList());
 
             int freeCount = freeProviders.size();
-            boolean isSlotAvailable = freeCount > 0;
+            boolean isSlotAvailable = meetsLeadTime && freeCount > 0;
 
             slots.add(AvailableSlotResponse.builder()
                     .startTime(currentStart)
                     .endTime(currentEnd)
-                    .availableProvidersCount(freeCount)
+                    .availableProvidersCount(isSlotAvailable ? freeCount : 0)
                     .available(isSlotAvailable)
-                    .availableProviders(freeProviders)
+                    .availableProviders(isSlotAvailable ? freeProviders : List.of())
                     .build());
 
             currentStart = currentEnd;

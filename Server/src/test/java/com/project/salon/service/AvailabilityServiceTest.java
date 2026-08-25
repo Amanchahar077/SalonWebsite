@@ -12,6 +12,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Collections;
@@ -35,9 +38,24 @@ class AvailabilityServiceTest {
 
     @Mock
     private ProviderService providerService;
+    @Mock
+    private Clock clock;
 
     @InjectMocks
     private AvailabilityService availabilityService;
+
+    private final LocalDateTime fixedNow = LocalDateTime.of(2026, 1, 15, 10, 0);
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() throws Exception {
+        ZoneId zone = ZoneId.systemDefault();
+        when(clock.instant()).thenReturn(fixedNow.atZone(zone).toInstant());
+        when(clock.getZone()).thenReturn(zone);
+
+        var minimumLeadField = AvailabilityService.class.getDeclaredField("minimumBookingLeadMinutes");
+        minimumLeadField.setAccessible(true);
+        minimumLeadField.set(availabilityService, 60);
+    }
 
     @Test
     void testGetAvailabilityForDate_Success() {
@@ -56,11 +74,35 @@ class AvailabilityServiceTest {
         when(appointmentRepository.findOverlappingActiveAppointments(any(), any(), any(), any()))
                 .thenReturn(Collections.emptyList());
 
-        AvailabilityResponse response = availabilityService.getAvailabilityForDate(LocalDate.now().plusDays(1));
+        AvailabilityResponse response = availabilityService.getAvailabilityForDate(fixedNow.toLocalDate().plusDays(1));
 
         assertNotNull(response);
         assertEquals(4, response.getSlots().size()); // 10:00, 10:30, 11:00, 11:30
         assertTrue(response.getSlots().get(0).isAvailable());
         assertEquals(2, response.getSlots().get(0).getAvailableProvidersCount());
+    }
+
+    @Test
+    void testGetAvailabilityForDate_MarksSlotsWithinOneHourUnavailable() {
+        SalonConfiguration config = SalonConfiguration.builder()
+                .openingTime(LocalTime.of(10, 30))
+                .closingTime(LocalTime.of(11, 30))
+                .slotDuration(30)
+                .providerCount(1)
+                .build();
+
+        Provider provider = Provider.builder().id(1L).name("Rahul").status(ProviderStatus.AVAILABLE).build();
+
+        when(configurationService.getOrCreateDefaultConfig()).thenReturn(config);
+        when(providerRepository.findByStatus(ProviderStatus.AVAILABLE)).thenReturn(List.of(provider));
+        when(appointmentRepository.findOverlappingActiveAppointments(any(), any(), any(), any()))
+                .thenReturn(Collections.emptyList());
+
+        AvailabilityResponse response = availabilityService.getAvailabilityForDate(fixedNow.toLocalDate());
+
+        assertEquals(2, response.getSlots().size());
+        assertFalse(response.getSlots().get(0).isAvailable());
+        assertEquals(0, response.getSlots().get(0).getAvailableProvidersCount());
+        assertTrue(response.getSlots().get(1).isAvailable());
     }
 }

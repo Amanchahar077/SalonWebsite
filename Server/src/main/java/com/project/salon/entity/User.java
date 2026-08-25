@@ -27,7 +27,7 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(name = "profile_image", length = 512)
+    @Column(name = "profile_image", length = 2048)
     private String profileImage;
 
     @Enumerated(EnumType.STRING)

@@ -21,6 +21,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -41,12 +42,16 @@ public class AppointmentService {
     private final AppointmentStatusHistoryRepository historyRepository;
     private final ProviderService providerService;
     private final ApplicationEventPublisher eventPublisher;
+    private final Clock clock;
 
     @Value("${app.appointment.cancellation-window-hours:2}")
     private int cancellationWindowHours;
 
     @Value("${app.appointment.pending-expiration-minutes:15}")
     private int pendingExpirationMinutes;
+
+    @Value("${app.appointment.minimum-booking-lead-minutes:60}")
+    private int minimumBookingLeadMinutes;
 
     private static final List<AppointmentStatus> ACTIVE_STATUSES = Arrays.asList(
             AppointmentStatus.PENDING_PAYMENT,
@@ -60,7 +65,8 @@ public class AppointmentService {
                               SalonConfigurationService configurationService,
                               AppointmentStatusHistoryRepository historyRepository,
                               ProviderService providerService,
-                              ApplicationEventPublisher eventPublisher) {
+                              ApplicationEventPublisher eventPublisher,
+                              Clock clock) {
         this.appointmentRepository = appointmentRepository;
         this.providerRepository = providerRepository;
         this.userRepository = userRepository;
@@ -68,6 +74,7 @@ public class AppointmentService {
         this.historyRepository = historyRepository;
         this.providerService = providerService;
         this.eventPublisher = eventPublisher;
+        this.clock = clock;
     }
 
     @Transactional
@@ -76,12 +83,17 @@ public class AppointmentService {
         LocalDate date = request.getAppointmentDate();
         LocalTime startTime = request.getStartTime();
         LocalTime endTime = startTime.plusMinutes(config.getSlotDuration());
+        LocalDateTime appointmentDateTime = LocalDateTime.of(date, startTime);
+        LocalDateTime minimumAllowedStart = LocalDateTime.now(clock).plusMinutes(minimumBookingLeadMinutes);
 
-        if (date.isBefore(LocalDate.now())) {
+        if (date.isBefore(LocalDate.now(clock))) {
             throw new InvalidRequestException("Cannot book appointments for past dates.");
         }
-        if (date.isEqual(LocalDate.now()) && startTime.isBefore(LocalTime.now())) {
+        if (appointmentDateTime.isBefore(LocalDateTime.now(clock))) {
             throw new InvalidRequestException("Cannot book appointments for past time slots.");
+        }
+        if (appointmentDateTime.isBefore(minimumAllowedStart)) {
+            throw new InvalidRequestException("Appointments must be booked at least " + minimumBookingLeadMinutes + " minutes in advance.");
         }
         if (startTime.isBefore(config.getOpeningTime()) || endTime.isAfter(config.getClosingTime())) {
             throw new InvalidRequestException("Selected time slot is outside salon operating hours.");
@@ -167,7 +179,7 @@ public class AppointmentService {
 
         if (!currentUser.getRole().equals(Role.ADMIN)) {
             LocalDateTime appointmentDateTime = LocalDateTime.of(appointment.getAppointmentDate(), appointment.getStartTime());
-            if (LocalDateTime.now().plusHours(cancellationWindowHours).isAfter(appointmentDateTime)) {
+            if (LocalDateTime.now(clock).plusHours(cancellationWindowHours).isAfter(appointmentDateTime)) {
                 throw new InvalidAppointmentStateException("Appointments cannot be cancelled within " + cancellationWindowHours + " hours of the scheduled time.");
             }
         }
@@ -218,7 +230,7 @@ public class AppointmentService {
     @Scheduled(fixedRate = 60000)
     @Transactional
     public void expirePendingAppointments() {
-        LocalDateTime threshold = LocalDateTime.now().minusMinutes(pendingExpirationMinutes);
+        LocalDateTime threshold = LocalDateTime.now(clock).minusMinutes(pendingExpirationMinutes);
         List<Appointment> expired = appointmentRepository.findByStatusAndCreatedAtBefore(AppointmentStatus.PENDING_PAYMENT, threshold);
 
         for (Appointment app : expired) {

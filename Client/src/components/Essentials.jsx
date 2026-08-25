@@ -1,4 +1,4 @@
-import imgVisionBoard from "../assets/cloth-barber.jpg";
+import salonVideo from "../assets/salon video.mp4";
 
 export default function Essentials() {
   return (
@@ -40,10 +40,13 @@ export default function Essentials() {
           </dl>
         </div>
         <figure className="cshot rv" data-speed="0.05">
-          <img
-            src={imgVisionBoard}
-            alt="Close up of hair clipper trimming head"
-            loading="lazy"
+          <video
+            src={salonVideo}
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="auto"
           />
         </figure>
       </div>

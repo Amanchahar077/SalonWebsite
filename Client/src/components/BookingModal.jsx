@@ -104,12 +104,12 @@ export default function BookingModal({ isOpen, onClose, user }) {
         const response = await api.getAvailability(selectedDate);
         setAvailableSlots(response.slots || []);
         if (response.slots && response.slots.length > 0) {
-          // Default select first available slot
           const firstAvailable = response.slots.find(s => s.available);
-          setSelectedTimeSlot(firstAvailable || response.slots[0]);
-          if (firstAvailable && firstAvailable.availableProviders) {
-            setAvailableProviders(firstAvailable.availableProviders);
-          }
+          setSelectedTimeSlot(firstAvailable || null);
+          setAvailableProviders(firstAvailable?.availableProviders || []);
+        } else {
+          setSelectedTimeSlot(null);
+          setAvailableProviders([]);
         }
       } catch (err) {
         console.error('Failed to load availability from server:', err);
@@ -126,8 +126,8 @@ export default function BookingModal({ isOpen, onClose, user }) {
 
   const handleNext = () => {
     setErrorMsg('');
-    if (step === 3 && !selectedTimeSlot) {
-      setErrorMsg('Please select an available time slot.');
+    if (step === 3 && (!selectedTimeSlot || !selectedTimeSlot.available)) {
+      setErrorMsg('Please select an available time slot at least one hour from now.');
       return;
     }
     if (step < 4) setStep(step + 1);
@@ -375,7 +375,7 @@ export default function BookingModal({ isOpen, onClose, user }) {
                       >
                         <div>{slot.startTime}</div>
                         <div style={{ fontSize: '11px', marginTop: '2px' }}>
-                          {slot.available ? `${slot.availableProvidersCount} seats` : 'Full'}
+                          {slot.available ? `${slot.availableProvidersCount} seats` : 'Unavailable'}
                         </div>
                       </button>
                     );

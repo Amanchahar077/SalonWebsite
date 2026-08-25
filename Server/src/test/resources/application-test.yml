@@ -33,6 +33,7 @@ app:
   appointment:
     cancellation-window-hours: 2
     pending-expiration-minutes: 15
+    minimum-booking-lead-minutes: 60
 
 razorpay:
   key-id: rzp_test_dummykey

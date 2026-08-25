@@ -1,0 +1,6 @@
+.env
+.env.*
+!.env.example
+*.log
+*~
+Server/src/main/resources/application.yml
